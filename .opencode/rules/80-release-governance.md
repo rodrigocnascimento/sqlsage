@@ -1,9 +1,3 @@
-
----
-
-## `.opencode/rules/release-governance.md`
-
-```md
 # Rule: Release Governance with Explicit Approval (RGEA)
 
 ## Context

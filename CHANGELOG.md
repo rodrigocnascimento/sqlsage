@@ -4,6 +4,26 @@ Todas as mudancas notaveis do projeto sao documentadas neste arquivo.
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [0.3.0] - 2026-03-06
+
+### Added
+- Unified heuristic + ML prediction pipeline (heuristics as base, ML as optional complement)
+- `heuristic-rules.ts` - Rule-based SQL analysis engine with pattern detection
+- `tokenizer.ts` - SQL tokenizer for feature extraction
+- `tdd-unify-prediction-engine.md` - Technical design document
+
+### Changed
+- `MLQueryEngine` refactored to orchestrate heuristic-first, ML-second pipeline
+- `model.ts` updated with proper weight serialization and `findLatestModel` fix
+- `train.ts` simplified to use new tokenizer-based feature extraction
+- `ml-prediction.service.ts` slimmed to delegate to unified engine
+- CLI command adjustments in `index.ts`
+
+### Removed
+- `feature-engineer.ts` - Replaced by heuristic-rules + tokenizer
+- `schema-registry.ts` - Dead code from v0.1 architecture
+- `types.ts` - Consolidated into engine modules
+
 ## [0.2.0] - 2026-03-06
 
 ### Adicionado

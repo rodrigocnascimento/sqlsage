@@ -134,6 +134,178 @@ Você está no modo de revisão de código. Foque em:
 
 Forneça feedback construtivo sem fazer alterações diretas.
 
+## commands/finish-task.md
+
+---
+description: Finalizar tarefa, resumir entrega e solicitar aprovação
+agent: plan
+---
+
+Siga o protocolo de Finalização de Tarefa:
+
+## 1. Revisar a entrega concluída
+Revise a tarefa executada e produza um resumo objetivo contendo:
+- o que foi implementado, corrigido ou alterado
+- arquivos principais impactados
+- impactos técnicos relevantes
+- classificação preliminar da mudança:
+  - fix
+  - feat
+  - breaking change
+
+## 2. Identificar a origem da versão
+Localize a fonte oficial da versão do projeto, seguindo esta ordem de prioridade:
+1. `package.json`
+2. `composer.json`
+3. `pyproject.toml`
+4. `Cargo.toml`
+5. outro manifesto/version file do projeto
+
+Se nenhuma origem de versão for encontrada, informe isso claramente no output.
+
+## 3. Sugerir o version bump
+Use Semantic Versioning:
+- `fix` -> PATCH
+- `feat` -> MINOR
+- `breaking change` -> MAJOR
+
+Você deve informar:
+- versão atual
+- bump recomendado
+- próxima versão estimada
+
+## 4. Output obrigatório
+O output deve conter obrigatoriamente:
+
+1. Summary of delivered work
+2. Main files changed
+3. Change classification
+4. Current version
+5. Recommended bump
+6. Next version
+
+## 5. Pergunta obrigatória
+Após exibir o resumo, você deve PARAR e perguntar exatamente:
+
+"Do you approve these changes and the proposed version bump, Developer?"
+
+## 6. Regras obrigatórias
+- Não atualizar versão neste comando
+- Não atualizar `CHANGELOG.md` neste comando
+- Não criar commit, tag ou push neste comando
+- Apenas revisar, classificar, sugerir o bump e pedir aprovação
+- Se houver dúvida sobre a classificação (`fix`, `feat`, `breaking change`), expor isso objetivamente antes da pergunta final
+
+## Tarefa Solicitada
+$ARGUMENTS
+
+## commands/release.md
+
+---
+description: Executar release update após aprovação explícita
+agent: plan
+---
+
+Siga o protocolo de Release Update Pós-Aprovação:
+
+## 1. Pré-condição obrigatória
+Este comando só pode prosseguir se houver aprovação explícita prévia do Developer para:
+- as mudanças entregues
+- o version bump proposto
+
+Se não houver aprovação explícita no contexto atual, PARE e informe exatamente:
+
+"Explicit approval is required before running the release update."
+
+## 2. Validar fluxo correto
+Antes de prosseguir, verifique se houve um resumo prévio da entrega no contexto atual.
+
+Se não houver evidência clara de revisão prévia da tarefa, PARE e informe exatamente:
+
+"Run /finish-task before /release so the work can be reviewed and approved first."
+
+## 3. Identificar a origem da versão
+Localize a fonte oficial da versão do projeto, seguindo esta ordem de prioridade:
+1. `package.json`
+2. `composer.json`
+3. `pyproject.toml`
+4. `Cargo.toml`
+5. outro manifesto/version file do projeto
+
+Se nenhuma origem confiável for encontrada, pare e informe isso claramente.
+
+## 4. Determinar o tipo de bump
+Use a classificação já aprovada:
+- `fix` -> PATCH
+- `feat` -> MINOR
+- `breaking change` -> MAJOR
+
+Se a classificação aprovada não estiver clara, pare e informe a inconsistência antes de alterar arquivos.
+
+## 5. Atualizar versão
+Atualize a versão na fonte oficial identificada.
+
+Se houver outros arquivos que devam refletir a mesma versão, atualize-os também para manter consistência.
+
+## 6. Atualizar `CHANGELOG.md`
+Atualize o arquivo `CHANGELOG.md` adicionando a nova entrada no topo com:
+- nova versão
+- data atual no formato `YYYY-MM-DD`
+- categorias aplicáveis:
+  - Added
+  - Changed
+  - Fixed
+  - Removed
+
+Formato esperado:
+
+```md
+## [<new-version>] - <YYYY-MM-DD>
+
+### Added
+- ...
+
+### Changed
+- ...
+
+### Fixed
+- ...
+
+### Removed
+- ...
+```
+
+Regras:
+
+entrada mais recente no topo não inventar categorias vazias descrever somente mudanças reais da entrega manter texto objetivo e curto
+
+## 7. Validar consistência
+
+Após atualizar a versão e o changelog, valide: se a nova versão está consistente em todos os arquivos relevantes se o changelog corresponde ao que foi entregue se o bump aplicado corresponde ao tipo aprovado
+
+## 8. Preparar release metadata
+
+Ao final, fornecer: versão anterior nova versão arquivos alterados no release update sugestão de commit message sugestão de tag
+
+Formato sugerido:
+
+Commit: chore(release): bump version to <new-version>
+
+Tag: v<new-version>
+
+## 9. Regras obrigatórias
+
+- Nunca executar este comando sem aprovação explícita 
+- Nunca fazer push automaticamente
+- Nunca criar tag ou commit automaticamente, a menos que isso seja solicitado explicitamente
+- Nunca atualizar changelog sem atualizar a versão oficial
+ 
+Se CHANGELOG.md não existir, crie-o somente neste momento
+
+Tarefa Solicitada
+
+$ARGUMENTS
+
 ## commands/tdp.md
 
 ---
@@ -1194,4 +1366,157 @@ The workflow MUST follow this order:
 5️⃣ Update CHANGELOG.md
 
 Skipping steps is **not allowed**.
+
+## rules/80-release-governance.md
+
+# Rule: Release Governance with Explicit Approval (RGEA)
+
+## Context
+
+To maintain release safety, auditability, and predictable version history, every completed task must go through an explicit approval flow before any version bump or changelog update is performed.
+
+This rule establishes mandatory governance for task finalization and release execution.
+
+---
+
+## 1) Approval Before Release Is Mandatory
+
+After completing any implementation, fix, refactor, or feature, the system MUST NOT:
+- bump version
+- update `CHANGELOG.md`
+- prepare release metadata as executed work
+- create commit or tag automatically
+
+until the Developer explicitly approves the delivered changes.
+
+---
+
+## 2) Mandatory Review Command Before Release
+
+Before any release-related action, the system MUST first run the task review flow through:
+
+- `/finish-task`
+
+This review step must produce:
+- summary of delivered work
+- main files changed
+- change classification
+- current version
+- recommended bump
+- next version
+- explicit approval request
+
+If this review step has not happened in the current context, `/release` MUST NOT proceed.
+
+---
+
+## 3) Mandatory Approval Question
+
+At the end of the review flow, the system MUST ask exactly:
+
+"Do you approve these changes and the proposed version bump, Developer?"
+
+The system must then stop and wait for explicit approval.
+
+---
+
+## 4) Release Execution Requires Explicit Approval
+
+The release flow may only proceed through:
+
+- `/release`
+
+and only if the Developer has explicitly approved the reviewed work in the current context.
+
+Valid examples of explicit approval include direct confirmations such as:
+- yes
+- approved
+- ok
+- proceed
+- sim
+- aprovado
+
+If approval is denied, unclear, or absent, the release flow MUST stop.
+
+---
+
+## 5) Mandatory Release Actions After Approval
+
+Once approval is explicit, the system MUST:
+1. identify the official version source
+2. apply the correct semantic version bump
+3. update `CHANGELOG.md`
+4. validate consistency between version source and changelog
+5. provide release metadata summary
+
+---
+
+## 6) Semantic Versioning Policy
+
+The system MUST use Semantic Versioning as default:
+
+- `fix` -> PATCH
+- `feat` -> MINOR
+- `breaking change` -> MAJOR
+
+If classification is uncertain, the system must expose the uncertainty before requesting approval.
+
+---
+
+## 7) Git Safety Restrictions
+
+Even after approval, the system MUST NOT automatically:
+- commit
+- tag
+- push
+- publish
+
+unless the Developer explicitly requests those actions.
+
+It may only prepare suggested release metadata, such as:
+- commit message
+- tag name
+
+---
+
+## 8) Source of Truth for Version
+
+The system MUST identify the official version source using this priority order:
+1. `package.json`
+2. `composer.json`
+3. `pyproject.toml`
+4. `Cargo.toml`
+5. another project-defined version source
+
+`CHANGELOG.md` must never be treated as the only source of truth if an official manifest exists.
+
+---
+
+## 9) Changelog Rules
+
+When updating `CHANGELOG.md`, the system MUST:
+- add the newest entry at the top
+- include the new version
+- include the current date in `YYYY-MM-DD`
+- use only applicable sections:
+  - Added
+  - Changed
+  - Fixed
+  - Removed
+- describe only real delivered changes
+
+---
+
+## 10) Strict Order of Execution
+
+The mandatory order is:
+
+1. Task implementation
+2. `/finish-task`
+3. Explicit approval
+4. `/release`
+
+Skipping steps is not allowed.
+
+If any step is missing, the system must stop and indicate the required previous step.
 <!-- END OPENCODE AUTO -->
