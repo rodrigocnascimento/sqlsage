@@ -1,0 +1,38 @@
+{
+  "format": "layers-model",
+  "generatedBy": "sql-ml-cli",
+  "version": "v1-example",
+  "userDefined": {},
+  "modelTopology": {
+    "keras_version": "2.15.0",
+    "backend": "tensorflow",
+    "model_config": {
+      "class_name": "Functional",
+      "config": {
+        "name": "sql_performance_model",
+        "layers": [
+          {
+            "class_name": "InputLayer",
+            "config": {"batch_input_shape": [null, 20], "dtype": "float32", "name": "token_input", "sparse": false, "ragged": false}
+          },
+          {
+            "class_name": "Embedding",
+            "config": {"activity_regularizer": null, "batch_input_shape": [102, 64], "dtype": "float32", "embeddings_initializer": {"class_name": "RandomUniform", "config": {"maxval": 0.05, "minval": -0.05, "seed": null}}, "embeddings_regularizer": null, "input_dim": 102, "mask_zero": true, "name": "embedding_1", "output_dim": 64, "trainable": true}
+          },
+          {
+            "class_name": "Bidirectional",
+            "config": {
+              "forward_layer": {"class_name": "LSTM", "config": {"dropout": 0.0, "name": "lstm", "recurrent_dropout": 0.2, "return_sequences": false, "trainable": true, "units": 32, "use_bias": true}},
+              "name": "bidirectional_1"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "trainingConfig": {
+    "optimizer": "adam",
+    "loss": "binaryCrossentropy",
+    "metrics": ["accuracy"]
+  }
+}
