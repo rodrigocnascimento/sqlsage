@@ -1,13 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as tf from '@tensorflow/tfjs';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { QueryPerformancePredictor } from './model.js';
 import { IVectorizedQuery } from './types.js';
+import { SEQ_LEN } from './tokenizer.js';
+
+const META_DIM = 18;
+
+function makeVector(opts?: Partial<{ seqFill: number; metaFill: number }>): IVectorizedQuery {
+  const fill = opts || {};
+  return {
+    tokenSequence: Array(SEQ_LEN).fill(fill.seqFill ?? 1),
+    structuralFeatures: Array(META_DIM).fill(fill.metaFill ?? 0),
+  };
+}
 
 describe('QueryPerformancePredictor', () => {
   let predictor: QueryPerformancePredictor;
 
   beforeEach(() => {
-    predictor = new QueryPerformancePredictor(19, 100);
+    predictor = new QueryPerformancePredictor();
   });
 
   afterEach(() => {
@@ -15,37 +29,37 @@ describe('QueryPerformancePredictor', () => {
   });
 
   describe('constructor', () => {
-    it('should create predictor with given parameters', () => {
+    it('should create predictor with zero queries processed', () => {
       expect(predictor).toBeDefined();
       expect(predictor.queriesProcessed).toBe(0);
+    });
+
+    it('should start with isTrainedModel false', () => {
+      expect(predictor.isTrainedModel).toBe(false);
     });
   });
 
   describe('buildModel', () => {
     it('should build a valid TensorFlow.js model', () => {
       predictor.buildModel();
-      expect(predictor).toBeDefined();
+      expect(predictor.getModel()).not.toBeNull();
     });
 
     it('should handle multiple buildModel calls', () => {
       predictor.buildModel();
       predictor.buildModel();
-      expect(predictor).toBeDefined();
+      expect(predictor.getModel()).not.toBeNull();
     });
   });
 
-  describe('explainPrediction', () => {
+  describe('predict', () => {
     beforeEach(() => {
       predictor.buildModel();
     });
 
     it('should return prediction result with score and insights', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(0).map((_, i) => i % 19),
-        structuralFeatures: [0.1, 0.2, 0.3, 0.4, 0, 0, 0, 0]
-      };
-
-      const result = await predictor.explainPrediction(vector);
+      const vector = makeVector();
+      const result = await predictor.predict(vector);
 
       expect(result).toHaveProperty('performanceScore');
       expect(result).toHaveProperty('insights');
@@ -53,208 +67,171 @@ describe('QueryPerformancePredictor', () => {
       expect(result.performanceScore).toBeLessThanOrEqual(1);
     });
 
+    it('should return empty insights array (insights come from heuristic engine)', async () => {
+      const vector = makeVector();
+      const result = await predictor.predict(vector);
+
+      expect(result.insights).toEqual([]);
+    });
+
     it('should increment queriesProcessed counter', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 0, 0, 0, 0]
-      };
+      const vector = makeVector();
 
       expect(predictor.queriesProcessed).toBe(0);
-      await predictor.explainPrediction(vector);
+      await predictor.predict(vector);
       expect(predictor.queriesProcessed).toBe(1);
-      await predictor.explainPrediction(vector);
+      await predictor.predict(vector);
       expect(predictor.queriesProcessed).toBe(2);
     });
 
     it('should throw error if model not built', async () => {
-      const newPredictor = new QueryPerformancePredictor(19, 100);
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 0, 0, 0, 0]
-      };
+      const newPredictor = new QueryPerformancePredictor();
+      const vector = makeVector();
 
-      await expect(newPredictor.explainPrediction(vector)).rejects.toThrow('Model not initialized');
+      await expect(newPredictor.predict(vector)).rejects.toThrow('Model not initialized');
     });
 
-    it('should return score in valid range', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(0),
-        structuralFeatures: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
-      };
+    it('should return score in valid range for all-zero features', async () => {
+      const vector = makeVector({ seqFill: 0, metaFill: 0 });
+      const result = await predictor.predict(vector);
 
-      const result = await predictor.explainPrediction(vector);
+      expect(result.performanceScore).toBeGreaterThanOrEqual(0);
+      expect(result.performanceScore).toBeLessThanOrEqual(1);
+    });
+
+    it('should return score in valid range for mid features', async () => {
+      const vector = makeVector({ seqFill: 5, metaFill: 0.5 });
+      const result = await predictor.predict(vector);
+
       expect(result.performanceScore).toBeGreaterThanOrEqual(0);
       expect(result.performanceScore).toBeLessThanOrEqual(1);
     });
 
     it('should handle various feature combinations', async () => {
       const testCases = [
-        { features: [0, 0, 0, 0, 0, 0, 0, 0] },
-        { features: [1, 1, 1, 1, 0, 0, 0, 0] },
-        { features: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5] },
+        { seqFill: 0, metaFill: 0 },
+        { seqFill: 10, metaFill: 1 },
+        { seqFill: 50, metaFill: 0.5 },
       ];
 
       for (const tc of testCases) {
-        const vector: IVectorizedQuery = {
-          tokenSequence: Array(100).fill(1),
-          structuralFeatures: tc.features as number[]
-        };
-        const result = await predictor.explainPrediction(vector);
+        const vector = makeVector(tc);
+        const result = await predictor.predict(vector);
         expect(result.performanceScore).toBeGreaterThanOrEqual(0);
         expect(result.performanceScore).toBeLessThanOrEqual(1);
       }
     });
   });
 
-  describe('generateInsights', () => {
+  describe('weight serialization', () => {
     beforeEach(() => {
       predictor.buildModel();
     });
 
-    it('should generate insights for Cartesian risk', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 1, 0, 0, 0]
-      };
+    it('should save weights to a file', () => {
+      const tmpFile = path.join(os.tmpdir(), `test-weights-${Date.now()}.json`);
 
-      const result = await predictor.explainPrediction(vector);
-      const hasCartesianInsight = result.insights.some(i => i.issueType === 'PERFORMANCE_BOTTLENECK');
-      expect(hasCartesianInsight).toBe(true);
+      try {
+        predictor.saveWeights(tmpFile);
+
+        expect(fs.existsSync(tmpFile)).toBe(true);
+        const content = fs.readFileSync(tmpFile, 'utf-8');
+        const parsed = JSON.parse(content);
+        expect(Array.isArray(parsed)).toBe(true);
+        expect(parsed.length).toBeGreaterThan(0);
+        expect(parsed[0]).toHaveProperty('name');
+        expect(parsed[0]).toHaveProperty('shape');
+        expect(parsed[0]).toHaveProperty('data');
+      } finally {
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+      }
     });
 
-    it('should generate insights for missing indexes', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 0, 0.5, 0, 0]
-      };
-
-      const result = await predictor.explainPrediction(vector);
-      const hasSchemaInsight = result.insights.some(i => i.issueType === 'SCHEMA_SUGGESTION');
-      expect(hasSchemaInsight).toBe(true);
+    it('should throw when saving weights without model', () => {
+      const noModel = new QueryPerformancePredictor();
+      expect(() => noModel.saveWeights('/tmp/test.json')).toThrow('Model not initialized');
     });
 
-    it('should generate insights for full table scan', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 0, 0, 1, 0]
-      };
-
-      const result = await predictor.explainPrediction(vector);
-      const hasAntiPattern = result.insights.some(i => i.issueType === 'ANTI_PATTERN');
-      expect(hasAntiPattern).toBe(true);
+    it('should throw when loading weights without model', () => {
+      const noModel = new QueryPerformancePredictor();
+      expect(() => noModel.loadWeights('/tmp/test.json')).toThrow('Model not built');
     });
 
-    it('should include educational fixes in insights', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 1, 0, 0, 0]
-      };
+    it('should throw when loading non-existent file', () => {
+      expect(() => predictor.loadWeights('/nonexistent/weights.json')).toThrow('Weights file not found');
+    });
+  });
 
-      const result = await predictor.explainPrediction(vector);
-      const cartesianInsight = result.insights.find(i => i.issueType === 'PERFORMANCE_BOTTLENECK');
-      expect(cartesianInsight?.educationalFix).toBeDefined();
-      expect(cartesianInsight?.educationalFix.length).toBeGreaterThan(0);
+  describe('findLatestModel', () => {
+    it('should return null for non-existent directory', () => {
+      const result = QueryPerformancePredictor.findLatestModel('/nonexistent/dir');
+      expect(result).toBeNull();
     });
 
-    it('should include affected segment in insights', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 1, 0, 0, 0]
-      };
+    it('should return null when no weight files exist', () => {
+      const fs = require('fs');
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'readdirSync').mockReturnValue(['readme.md', 'other.txt']);
 
-      const result = await predictor.explainPrediction(vector);
-      const insight = result.insights[0];
-      expect(insight?.affectedSegment).toBeDefined();
+      const result = QueryPerformancePredictor.findLatestModel('/fake/models');
+      expect(result).toBeNull();
+
+      vi.restoreAllMocks();
     });
 
-    it('should include severity score in insights', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 1, 0, 0, 0]
-      };
+    it('should return latest model when weight + topology files exist', () => {
+      const fs = require('fs');
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'readdirSync').mockReturnValue([
+        'model-v1000.json',
+        'model-v1000-weights.json',
+        'model-v2000.json',
+        'model-v2000-weights.json',
+      ]);
 
-      const result = await predictor.explainPrediction(vector);
-      const insight = result.insights[0];
-      expect(insight?.severityScore).toBeGreaterThan(0);
-      expect(insight?.severityScore).toBeLessThanOrEqual(1);
+      const result = QueryPerformancePredictor.findLatestModel('/fake/models');
+      expect(result).toEqual({
+        topology: '/fake/models/model-v2000.json',
+        weights: '/fake/models/model-v2000-weights.json',
+      });
+
+      vi.restoreAllMocks();
     });
 
-    it('should include line number in insights', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 1, 0, 0, 0]
-      };
+    it('should skip weight files without matching topology', () => {
+      const fs = require('fs');
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'readdirSync').mockReturnValue([
+        'model-v2000-weights.json',
+        'model-v1000.json',
+        'model-v1000-weights.json',
+      ]);
 
-      const result = await predictor.explainPrediction(vector);
-      const insight = result.insights[0];
-      expect(insight?.lineNumber).toBeDefined();
-      expect(typeof insight?.lineNumber).toBe('number');
-    });
+      const result = QueryPerformancePredictor.findLatestModel('/fake/models');
+      expect(result).toEqual({
+        topology: '/fake/models/model-v1000.json',
+        weights: '/fake/models/model-v1000-weights.json',
+      });
 
-    it('should return multiple insights when multiple issues detected', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 1, 0.5, 1, 0]
-      };
-
-      const result = await predictor.explainPrediction(vector);
-      expect(result.insights.length).toBeGreaterThan(1);
-    });
-
-    it('should return empty insights for good query', async () => {
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0.1, 0, 0, 0, 0]
-      };
-
-      const result = await predictor.explainPrediction(vector);
-      const hasNoInsights = result.insights.length === 0;
-      expect(hasNoInsights).toBe(true);
-    });
-
-    it('should adjust severity based on score', async () => {
-      const vectorLowScore: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 1, 0, 0, 0]
-      };
-
-      const result = await predictor.explainPrediction(vectorLowScore);
-      const insight = result.insights.find(i => i.issueType === 'PERFORMANCE_BOTTLENECK');
-      expect(insight?.severityScore).toBeGreaterThan(0);
+      vi.restoreAllMocks();
     });
   });
 
   describe('edge cases', () => {
-    it('should handle very short token sequences', async () => {
+    it('should handle all zeros in token sequence', async () => {
       predictor.buildModel();
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: [0, 0, 0, 0, 0, 0, 0, 0]
-      };
-
-      const result = await predictor.explainPrediction(vector);
-      expect(result.performanceScore).toBeGreaterThanOrEqual(0);
-    });
-
-    it('should handle all zeros in features', async () => {
-      predictor.buildModel();
-      const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(0),
-        structuralFeatures: Array(8).fill(0)
-      };
-
-      const result = await predictor.explainPrediction(vector);
+      const vector = makeVector({ seqFill: 0, metaFill: 0 });
+      const result = await predictor.predict(vector);
       expect(result).toBeDefined();
     });
 
-    it('should handle all ones in features', async () => {
+    it('should handle max token values', async () => {
       predictor.buildModel();
       const vector: IVectorizedQuery = {
-        tokenSequence: Array(100).fill(1),
-        structuralFeatures: Array(8).fill(1)
+        tokenSequence: Array(SEQ_LEN).fill(100),
+        structuralFeatures: Array(META_DIM).fill(1),
       };
-
-      const result = await predictor.explainPrediction(vector);
+      const result = await predictor.predict(vector);
       expect(result.performanceScore).toBeGreaterThanOrEqual(0);
     });
   });

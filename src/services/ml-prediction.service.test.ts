@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { MLPredictionService, MLPredictionRequest, MLPredictionResponse } from './ml-prediction.service.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { MLPredictionService, MLPredictionRequest } from './ml-prediction.service.js';
 import * as tf from '@tensorflow/tfjs';
 
 describe('MLPredictionService', () => {
@@ -44,7 +44,7 @@ describe('MLPredictionService', () => {
       expect(result).toHaveProperty('performanceScore');
       expect(result).toHaveProperty('insights');
       expect(result).toHaveProperty('features');
-      expect(result).toHaveProperty('tokens');
+      expect(result).toHaveProperty('mlAvailable');
     });
 
     it('should return performance score between 0 and 1', async () => {
@@ -62,39 +62,33 @@ describe('MLPredictionService', () => {
       expect(Array.isArray(result.insights)).toBe(true);
     });
 
-    it('should return features object with all fields', async () => {
+    it('should return features object with expected fields', async () => {
       const request: MLPredictionRequest = { sql: 'SELECT * FROM users' };
       const result = await service.predict(request);
 
+      expect(result.features).toHaveProperty('hasJoin');
       expect(result.features).toHaveProperty('joinCount');
-      expect(result.features).toHaveProperty('subqueryDepth');
-      expect(result.features).toHaveProperty('whereClauseComplexity');
-      expect(result.features).toHaveProperty('selectedColumnsCount');
-      expect(result.features).toHaveProperty('hasCartesianRisk');
-      expect(result.features).toHaveProperty('missingIndexCount');
-      expect(result.features).toHaveProperty('fullTableScanRisk');
+      expect(result.features).toHaveProperty('hasSubquery');
+      expect(result.features).toHaveProperty('subqueryCount');
+      expect(result.features).toHaveProperty('selectStar');
+      expect(result.features).toHaveProperty('tableCount');
+      expect(result.features).toHaveProperty('hasOr');
+      expect(result.features).toHaveProperty('hasLike');
     });
 
-    it('should return tokens array', async () => {
-      const request: MLPredictionRequest = { sql: 'SELECT name FROM users WHERE id = 1' };
+    it('should return mlAvailable as boolean', async () => {
+      const request: MLPredictionRequest = { sql: 'SELECT * FROM users' };
       const result = await service.predict(request);
 
-      expect(Array.isArray(result.tokens)).toBe(true);
-      expect(result.tokens.length).toBeGreaterThan(0);
+      expect(typeof result.mlAvailable).toBe('boolean');
     });
 
-    it('should detect Cartesian product risk', async () => {
-      const request: MLPredictionRequest = { sql: 'SELECT * FROM users, orders' };
+    it('should report mlAvailable false without trained model', async () => {
+      const request: MLPredictionRequest = { sql: 'SELECT * FROM users' };
       const result = await service.predict(request);
 
-      expect(result.features.hasCartesianRisk).toBe(true);
-    });
-
-    it('should detect full table scan risk', async () => {
-      const request: MLPredictionRequest = { sql: "SELECT * FROM users WHERE name LIKE '%test%'" };
-      const result = await service.predict(request);
-
-      expect(result.features.fullTableScanRisk).toBe(true);
+      // No trained model loaded, so ML should not be available
+      expect(result.mlAvailable).toBe(false);
     });
 
     it('should count JOINs correctly', async () => {
@@ -104,11 +98,11 @@ describe('MLPredictionService', () => {
       expect(result.features.joinCount).toBeGreaterThanOrEqual(2);
     });
 
-    it('should handle complex queries with subqueries', async () => {
+    it('should detect subqueries', async () => {
       const request: MLPredictionRequest = { sql: 'SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)' };
       const result = await service.predict(request);
 
-      expect(result.features.subqueryDepth).toBeGreaterThanOrEqual(1);
+      expect(result.features.hasSubquery).toBe(1);
     });
 
     it('should handle empty SQL', async () => {
@@ -119,30 +113,12 @@ describe('MLPredictionService', () => {
       expect(result.performanceScore).toBeLessThanOrEqual(1);
     });
 
-    it('should handle SQL with schema context', async () => {
-      const request: MLPredictionRequest = { 
-        sql: 'SELECT * FROM users WHERE name = "test"',
-        schemaContext: 'users: id, name'
-      };
-      const result = await service.predict(request);
-
-      expect(result).toBeDefined();
-    });
-
-    it('should generate insights for performance issues', async () => {
+    it('should generate insights for cartesian product', async () => {
       const request: MLPredictionRequest = { sql: 'SELECT * FROM users, orders' };
       const result = await service.predict(request);
 
       const hasInsight = result.insights.length > 0;
       expect(hasInsight).toBe(true);
-    });
-
-    it('should limit tokens to 20', async () => {
-      const longQuery = 'SELECT a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z FROM users';
-      const request: MLPredictionRequest = { sql: longQuery };
-      const result = await service.predict(request);
-
-      expect(result.tokens.length).toBeLessThanOrEqual(20);
     });
 
     it('should throw if engine not initialized', async () => {
@@ -158,15 +134,12 @@ describe('MLPredictionService', () => {
       const status = await service.getStatus();
 
       expect(status.isLoaded).toBe(true);
-      expect(typeof status.vocabularySize).toBe('number');
-      expect(typeof status.queriesAnalyzed).toBe('number');
-      expect(typeof status.trainingSessions).toBe('number');
     });
 
-    it('should return correct vocabulary size', async () => {
+    it('should return queriesAnalyzed in status', async () => {
       const status = await service.getStatus();
 
-      expect(status.vocabularySize).toBeGreaterThan(0);
+      expect(typeof status.queriesAnalyzed).toBe('number');
     });
 
     it('should return updated queriesAnalyzed after prediction', async () => {
@@ -174,7 +147,18 @@ describe('MLPredictionService', () => {
       await service.predict(request);
 
       const status = await service.getStatus();
-      expect(status.queriesAnalyzed).toBeGreaterThanOrEqual(0);
+      expect(status.queriesAnalyzed).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should return heuristicRules count', async () => {
+      const status = await service.getStatus();
+      expect(typeof status.heuristicRules).toBe('number');
+      expect(status.heuristicRules).toBeGreaterThan(0);
+    });
+
+    it('should return mlModelLoaded in status', async () => {
+      const status = await service.getStatus();
+      expect(typeof status.mlModelLoaded).toBe('boolean');
     });
   });
 
@@ -206,14 +190,6 @@ describe('MLPredictionService', () => {
       const result = await service.predict(request);
 
       expect(result).toBeDefined();
-    });
-
-    it('should convert tokens to uppercase', async () => {
-      const request: MLPredictionRequest = { sql: 'select name from users' };
-      const result = await service.predict(request);
-
-      const hasUppercaseTokens = result.tokens.every(t => t === t.toUpperCase());
-      expect(hasUppercaseTokens).toBe(true);
     });
   });
 });

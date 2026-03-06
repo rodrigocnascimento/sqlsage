@@ -1,60 +1,107 @@
-import { SchemaRegistry } from './schema-registry';
-import { SQLFeatureEngineer } from './feature-engineer';
 import { QueryPerformancePredictor } from './model';
-import { ISQLInsight } from './types';
+import { HeuristicEngine } from './heuristic-rules';
+import { FeatureExtractor, IExtractedFeatures } from './feature-extractor';
+import { tokenizeQuery } from './tokenizer';
+import { ISQLInsight, IVectorizedQuery } from './types';
 
 export class MLQueryEngine {
-    public schemaRegistry: SchemaRegistry;
-    public featureEngineer: SQLFeatureEngineer;
-    public model: QueryPerformancePredictor;
-    
-    private tokensRead = 0;
-    private trainingSessions = 0;
-    private totalImprovementsSuggested = 0;
-    private totalPerformanceScore = 0;
+  public model: QueryPerformancePredictor;
+  public heuristicEngine: HeuristicEngine;
+  public featureExtractor: FeatureExtractor;
 
-    constructor(dataDir: string = 'dataset') {
-        this.schemaRegistry = new SchemaRegistry();
+  private tokensRead = 0;
+  private totalImprovementsSuggested = 0;
+  private totalPerformanceScore = 0;
+  private queriesProcessed = 0;
 
-        const initialVocab = ['SELECT', 'FROM', 'WHERE', 'JOIN', 'AND', 'OR', 'GROUP', 'BY', 'ORDER', 'LIMIT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'TABLE', 'INT', 'VARCHAR', 'PRIMARY', 'KEY'];
-        this.featureEngineer = new SQLFeatureEngineer(initialVocab, this.schemaRegistry);
+  constructor() {
+    this.model = new QueryPerformancePredictor();
+    this.heuristicEngine = new HeuristicEngine();
+    this.featureExtractor = new FeatureExtractor();
+  }
 
-        this.model = new QueryPerformancePredictor(initialVocab.length, 100);
+  public async start(modelsDir?: string): Promise<void> {
+    this.model.buildModel();
+
+    // Try to load trained weights
+    if (modelsDir) {
+      const latest = QueryPerformancePredictor.findLatestModel(modelsDir);
+      if (latest) {
+        try {
+          this.model.loadWeights(latest.weights);
+          console.log(`[ML Engine] Loaded trained model: ${latest.weights}`);
+        } catch (err) {
+          console.warn(`[ML Engine] Failed to load model weights: ${err instanceof Error ? err.message : err}`);
+        }
+      }
     }
 
-    public async start(): Promise<void> {
-        this.model.buildModel();
-        console.log('[ML Engine] Model compiled.');
+    if (!this.model.isTrainedModel) {
+      console.log('[ML Engine] No trained model found. Running in heuristics-only mode.');
     }
 
-    public getStats() {
-        const avgScore = this.trainingSessions > 0 
-            ? this.totalPerformanceScore / this.trainingSessions 
-            : 0;
+    console.log('[ML Engine] Engine ready.');
+  }
 
-        return {
-            schemasLearned: this.schemaRegistry.getStats().tableCount || 0,
-            queriesAnalyzed: this.model.queriesProcessed || 0,
-            tokensRead: this.tokensRead,
-            trainingSessions: this.trainingSessions,
-            improvementsSuggested: this.totalImprovementsSuggested,
-            averageScore: avgScore
-        };
+  public getStats(): Record<string, unknown> {
+    return {
+      queriesAnalyzed: this.queriesProcessed,
+      tokensRead: this.tokensRead,
+      improvementsSuggested: this.totalImprovementsSuggested,
+      averageScore: this.queriesProcessed > 0
+        ? this.totalPerformanceScore / this.queriesProcessed
+        : 0,
+      mlModelLoaded: this.model.isTrainedModel,
+      heuristicRules: this.heuristicEngine.getRuleCount(),
+    };
+  }
+
+  public async processQuery(sql: string): Promise<{
+    performanceScore: number;
+    insights: ISQLInsight[];
+    features: IExtractedFeatures;
+    mlAvailable: boolean;
+  }> {
+    this.tokensRead += sql.split(/\s+/).length;
+
+    // 1. Heuristic analysis (always available)
+    const heuristic = this.heuristicEngine.analyze(sql);
+
+    // 2. Feature extraction
+    const features = this.featureExtractor.extract(sql);
+    const featureArray = this.featureExtractor.toArray(features);
+
+    // 3. ML prediction (only if trained model available)
+    let mlScore: number | null = null;
+    if (this.model.isTrainedModel) {
+      const tokenSeq = tokenizeQuery(sql);
+      const vector: IVectorizedQuery = {
+        tokenSequence: tokenSeq,
+        structuralFeatures: featureArray,
+      };
+      const prediction = await this.model.predict(vector);
+      mlScore = prediction.performanceScore;
     }
 
-    public async processQuery(sql: string): Promise<{ performanceScore: number; insights: ISQLInsight[] }> {
-        const vector = this.featureEngineer.process(sql);
-        this.tokensRead += sql.split(/\s+/).length;
-
-        const prediction = await this.model.explainPrediction(vector);
-        
-        this.trainingSessions++;
-        this.totalPerformanceScore += prediction.performanceScore;
-        this.totalImprovementsSuggested += prediction.insights.length;
-
-        return {
-            performanceScore: prediction.performanceScore,
-            insights: prediction.insights
-        };
+    // 4. Combined score
+    let finalScore: number;
+    if (mlScore !== null) {
+      // Heuristic (60%) + ML (40%)
+      finalScore = heuristic.score * 0.6 + (1 - mlScore) * 0.4;
+    } else {
+      finalScore = heuristic.score;
     }
+
+    // Update stats
+    this.queriesProcessed++;
+    this.totalPerformanceScore += finalScore;
+    this.totalImprovementsSuggested += heuristic.insights.length;
+
+    return {
+      performanceScore: finalScore,
+      insights: heuristic.insights,
+      features,
+      mlAvailable: mlScore !== null,
+    };
+  }
 }

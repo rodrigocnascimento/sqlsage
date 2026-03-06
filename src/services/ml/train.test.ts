@@ -120,6 +120,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       const result = await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -144,6 +145,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       const result = await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -161,6 +163,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       const result = await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -182,6 +185,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       const result = await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -202,6 +206,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       const result = await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -222,6 +227,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       const result = await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -241,6 +247,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -273,6 +280,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -290,6 +298,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -307,6 +316,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -337,6 +347,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       const result = await trainer.train('/fake/input.jsonl', '/fake/output', config);
@@ -360,6 +371,7 @@ describe('ModelTrainer', () => {
         batchSize: 4,
         validationSplit: 0.2,
         learningRate: 0.001,
+        slowThreshold: 500,
       };
 
       const result = await trainer.train('/fake/input.jsonl', '/fake/output', config);

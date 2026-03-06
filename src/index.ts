@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('sql-ml')
   .description('CLI tool to analyze SQL files using ML-based query performance prediction')
-  .version('1.0.0');
+  .version('0.3.0');
 
 program.addCommand(createCollectCommand());
 program.addCommand(createFeaturesCommand());
@@ -21,16 +21,17 @@ program
   .description('Analyze a SQL file and return performance predictions')
   .argument('<file>', 'Path to the SQL file to analyze')
   .option('-o, --output <file>', 'Output file for JSON results (stdout if not specified)')
+  .option('-m, --model <dir>', 'Model directory to load trained weights from', 'models')
   .option('-v, --verbose', 'Verbose output')
-  .action(async (file: string, options: { output?: string; verbose?: boolean }) => {
+  .action(async (file: string, options: { output?: string; model?: string; verbose?: boolean }) => {
     try {
       console.log('Initializing ML Engine...');
       const service = new MLPredictionService();
-      await service.initialize();
+      await service.initialize(options.model);
 
       if (options.verbose) {
         const status = await service.getStatus();
-        console.log('[Status]', status);
+        console.log('[Status]', JSON.stringify(status, null, 2));
       }
 
       console.log(`Reading SQL file: ${file}`);
@@ -51,16 +52,14 @@ program
 
       console.log('\nSummary:');
       console.log(`  Performance Score: ${(result.performanceScore * 100).toFixed(1)}%`);
-      console.log(`  Insights Found: ${result.insights.length}`);
-      
-      if (result.features.hasCartesianRisk) {
-        console.log('  ⚠️  Cartesian product risk detected');
-      }
-      if (result.features.fullTableScanRisk) {
-        console.log('  ⚠️  Full table scan risk detected');
-      }
-      if (result.features.missingIndexCount > 0) {
-        console.log(`  ⚠️  ${result.features.missingIndexCount} potential missing indexes`);
+      console.log(`  ML Model: ${result.mlAvailable ? 'loaded' : 'not available (heuristics only)'}`);
+      console.log(`  Issues Found: ${result.insights.length}`);
+
+      if (result.insights.length > 0) {
+        console.log('\n  Issues:');
+        for (const insight of result.insights) {
+          console.log(`    [${insight.issueType}] ${insight.educationalFix}`);
+        }
       }
 
     } catch (error) {
@@ -72,10 +71,11 @@ program
 program
   .command('status')
   .description('Show ML engine status')
-  .action(async () => {
+  .option('-m, --model <dir>', 'Model directory', 'models')
+  .action(async (options: { model?: string }) => {
     try {
       const service = new MLPredictionService();
-      await service.initialize();
+      await service.initialize(options.model);
       const status = await service.getStatus();
       console.log(JSON.stringify(status, null, 2));
     } catch (error) {

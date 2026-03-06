@@ -12,6 +12,7 @@ export function createTrainCommand(): Command {
     .option('-b, --batch-size <number>', 'Batch size', '32')
     .option('-v, --validation-split <number>', 'Validation split (0-1)', '0.2')
     .option('-l, --learning-rate <number>', 'Learning rate', '0.001')
+    .option('-s, --slow-threshold <number>', 'Execution time (ms) above which query is labeled slow', '500')
     .action(async (options) => {
       console.log('[Train] Starting model training...');
 
@@ -20,6 +21,7 @@ export function createTrainCommand(): Command {
         batchSize: parseInt(options.batchSize, 10),
         validationSplit: parseFloat(options.validationSplit),
         learningRate: parseFloat(options.learningRate),
+        slowThreshold: parseInt(options.slowThreshold, 10),
       };
 
       console.log('[Train] Configuration:');
@@ -27,6 +29,7 @@ export function createTrainCommand(): Command {
       console.log(`  Batch size: ${config.batchSize}`);
       console.log(`  Validation split: ${config.validationSplit}`);
       console.log(`  Learning rate: ${config.learningRate}`);
+      console.log(`  Slow threshold: ${config.slowThreshold}ms`);
 
       const trainer = new ModelTrainer();
 
@@ -39,7 +42,8 @@ export function createTrainCommand(): Command {
         console.log(`  Final accuracy: ${(result.finalAccuracy * 100).toFixed(2)}%`);
         console.log(`  Training samples: ${result.trainSamples}`);
         console.log(`  Validation samples: ${result.valSamples}`);
-        console.log(`  Model saved to: ${options.output}/model-${result.modelVersion}`);
+        console.log(`  Slow threshold: ${result.slowThreshold}ms`);
+        console.log(`  Model saved to: ${options.output}/`);
       } catch (error) {
         console.error('[Train] Error:', error instanceof Error ? error.message : error);
         process.exit(1);
