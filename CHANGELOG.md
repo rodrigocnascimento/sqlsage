@@ -4,6 +4,31 @@ Todas as mudancas notaveis do projeto sao documentadas neste arquivo.
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [0.5.0] - 2026-03-06
+
+### Added
+- Pluggable database connector architecture (`IDatabaseConnector` interface) for multi-engine support
+- MySQL/MariaDB connector (`MysqlConnector`) using `mysql2/promise` with EXPLAIN, catalog info, and query collection
+- `--source db` option in `collect` command to gather queries from `performance_schema`
+- Live EXPLAIN execution in `analyze` command when connected to a real database
+- Live catalog info gathering from `INFORMATION_SCHEMA` for index-aware feature extraction
+- `liveExplain` and `liveCatalog` flags in `MLPredictionResponse` indicating real data usage
+- Global CLI flags: `--host`, `--port`, `--user`, `--password`, `--database`, `--engine`, `--ssl`
+- Connection config resolver with CLI > `.env` > defaults priority (`resolveConnectionConfig()`)
+- `.env.example` template for `SQLML_*` environment variables
+- Technical Design Document: `docs/tdd-real-db-connector.md`
+- 63 new tests (connector factory, MySQL connector, connection config) — total: 329 tests
+
+### Changed
+- `CatalogGatherer` refactored to async with optional real DB connector (`setConnector()`) and `gatherMock()` fallback
+- `MLQueryEngine.processQuery()` now accepts optional `IExecutionPlan` and `ICatalogInfo` parameters
+- `MLPredictionService.predict()` accepts optional `IDatabaseConnector` for live data enrichment
+- `query-collector.ts` accepts `ConnectorResolver` for DB-sourced query collection
+
+### Fixed
+- `estimatedRows` feature (previously always 0) now populated from real EXPLAIN data when DB connected
+- `whereColumnsIndexed` feature (previously always 0) now populated from real catalog data when DB connected
+
 ## [0.4.0] - 2026-03-06
 
 ### Added
