@@ -63,7 +63,7 @@ export class FeatureExtractor {
   }
 
   private hasSubquery(query: string): boolean {
-    return /\bSELECT\b.*\(.+\).*\bFROM\b/.test(query) || query.includes('(SELECT');
+    return /\(\s*SELECT\b/.test(query);
   }
 
   private countSubqueries(query: string): number {

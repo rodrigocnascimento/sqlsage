@@ -1,8 +1,9 @@
-import { QueryPerformancePredictor } from './model';
-import { HeuristicEngine } from './heuristic-rules';
-import { FeatureExtractor, IExtractedFeatures } from './feature-extractor';
-import { tokenizeQuery } from './tokenizer';
-import { ISQLInsight, IVectorizedQuery } from './types';
+import { QueryPerformancePredictor } from './model.js';
+import { HeuristicEngine } from './heuristic-rules.js';
+import { FeatureExtractor, IExtractedFeatures } from './feature-extractor.js';
+import { tokenizeQuery } from './tokenizer.js';
+import { ISQLInsight, IVectorizedQuery } from './types.js';
+import { IExecutionPlan, ICatalogInfo } from '../../data/types.js';
 
 export class MLQueryEngine {
   public model: QueryPerformancePredictor;
@@ -56,7 +57,11 @@ export class MLQueryEngine {
     };
   }
 
-  public async processQuery(sql: string): Promise<{
+  public async processQuery(
+    sql: string,
+    executionPlan?: IExecutionPlan,
+    catalogInfo?: ICatalogInfo,
+  ): Promise<{
     performanceScore: number;
     insights: ISQLInsight[];
     features: IExtractedFeatures;
@@ -67,8 +72,8 @@ export class MLQueryEngine {
     // 1. Heuristic analysis (always available)
     const heuristic = this.heuristicEngine.analyze(sql);
 
-    // 2. Feature extraction
-    const features = this.featureExtractor.extract(sql);
+    // 2. Feature extraction (with optional live DB data)
+    const features = this.featureExtractor.extract(sql, executionPlan, catalogInfo);
     const featureArray = this.featureExtractor.toArray(features);
 
     // 3. ML prediction (only if trained model available)

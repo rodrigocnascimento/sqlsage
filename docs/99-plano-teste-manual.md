@@ -1,6 +1,8 @@
-# Plano de Teste Manual - sql-ml-cli v0.2
+# Plano de Teste Manual - sql-ml-cli v0.3
 
-Roteiro para validar o pipeline completo da ferramenta, da coleta ao treinamento.
+Roteiro para validar o pipeline completo da ferramenta, da coleta ao treinamento e analise.
+
+**Escopo da v0.3:** a ferramenta detecta anti-patterns SQL e atribui scores de risco via heuristicas (sempre disponiveis) com complemento opcional de ML (quando um modelo treinado existe). Os scores representam risco estrutural relativo, nao custo real de execucao. Reducao de custo so podera ser validada em versoes futuras com integracao a `EXPLAIN ANALYZE` e metricas reais de workload.
 
 **Pre-requisito:** build atualizado.
 
@@ -111,17 +113,20 @@ npm run start -- train
 **Esperado:**
 - Treinamento roda com 50 epochs (padrao)
 - Exibe loss e accuracy por epoch
-- Cria 2 arquivos em `models/`:
-  - `model-v<timestamp>.json`
-  - `training-result-v<timestamp>.json`
-- Exibe resumo final: loss, accuracy, amostras de treino/validacao
+- Cria 3 arquivos em `models/`:
+  - `model-v<timestamp>.json` (topologia do modelo)
+  - `model-v<timestamp>-weights.json` (pesos treinados)
+  - `training-result-v<timestamp>.json` (metricas de treino)
+- Exibe resumo final: loss, accuracy, amostras de treino/validacao, slowThreshold
 
 **Verificar:**
 
 ```bash
 ls -la models/
-cat models/training-result-v*.json | python3 -m json.tool | head -20
+cat models/training-result-v*.json | python3 -m json.tool | head -25
 ```
+
+O resultado do treino deve conter: `modelVersion`, `epochs`, `finalLoss`, `finalAccuracy`, `trainSamples`, `valSamples`, `slowThreshold`, e `metrics` (arrays de loss/accuracy por epoch).
 
 ### 4.2 - Treino com parametros customizados
 
@@ -155,7 +160,7 @@ echo "SELECT id, name FROM users WHERE id = 1;" > /tmp/test-simple.sql
 npm run start -- analyze /tmp/test-simple.sql
 ```
 
-**Esperado:** JSON com `performanceScore` (0-1), `features`, e `insights` (provavelmente vazio ou poucos).
+**Esperado:** JSON com `performanceScore` (0-1), `features` (18 campos estruturais), `insights` (provavelmente vazio ou poucos para query simples), e `mlAvailable` (boolean indicando se modelo treinado foi carregado).
 
 ### 5.2 - Query complexa
 
@@ -179,8 +184,15 @@ npm run start -- analyze /tmp/test-complex.sql
 
 **Esperado:**
 - `performanceScore` mais baixo (query mais arriscada)
-- `features` mostrando: `hasCartesianRisk`, `fullTableScanRisk`, `missingIndexCount`
-- `insights` com possiveis alertas (PERFORMANCE_BOTTLENECK, ANTI_PATTERN, etc)
+- `features` mostrando campos estruturais: `hasJoin: 1`, `joinCount: 2`, `hasOr: 1`, `hasLike: 1`, `hasGroupBy: 1`, `hasOrderBy: 1`
+- `insights` com alertas do motor heuristico. Validar presenca de:
+
+| Insight esperado | Tipo | Motivo |
+|---|---|---|
+| `leading-wildcard` | PERFORMANCE_BOTTLENECK | `LIKE '%vip%'` impede uso de indice |
+| `or-instead-of-union` | SYNTAX_OPTIMIZATION | `OR` em clausulas de tabelas distintas |
+
+**Nota v0.3:** Na v0.2, campos como `hasCartesianRisk`, `fullTableScanRisk` e `missingIndexCount` existiam como campos numericos no objeto `features`. Na v0.3, esses conceitos foram movidos para o motor heuristico e aparecem como entradas em `insights[]` (com `issueType` e `educationalFix`), nao mais como feature fields.
 
 ### 5.3 - Analise com verbose
 
@@ -209,7 +221,8 @@ Apos todas as etapas, voce deve ter:
 |---|---|---|
 | Queries coletadas | `data/queries.jsonl` | 12 linhas |
 | Features extraidas | `data/features.jsonl` | 12 linhas |
-| Modelo treinado | `models/model-v*.json` | 1+ arquivos |
+| Modelo treinado (topologia) | `models/model-v*.json` | 1+ arquivos |
+| Modelo treinado (pesos) | `models/model-v*-weights.json` | 1+ arquivos |
 | Resultado treino | `models/training-result-v*.json` | 1+ arquivos |
 
 ---
@@ -225,3 +238,5 @@ rm -f /tmp/test-simple.sql /tmp/test-complex.sql /tmp/few-features.jsonl /tmp/re
 ```
 
 Os exemplos em `data/examples/` e `models/examples/` permanecem intactos.
+
+**Nota:** o glob `models/model-v*.json` captura tanto os arquivos de topologia quanto os de pesos (`-weights.json`).

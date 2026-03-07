@@ -78,9 +78,20 @@ describe('FeatureExtractor', () => {
       expect(features.hasSubquery).toBe(1);
     });
 
-    it('should detect a subquery with SELECT...()...FROM pattern', () => {
+    it('should NOT treat aggregate functions as subqueries', () => {
       const features = extractor.extract('SELECT (MAX(id)) FROM users');
-      expect(features.hasSubquery).toBe(1);
+      expect(features.hasSubquery).toBe(0);
+    });
+
+    it('should NOT treat COUNT(*) as a subquery', () => {
+      const features = extractor.extract('SELECT COUNT(*) FROM orders WHERE status = \'completed\'');
+      expect(features.hasSubquery).toBe(0);
+    });
+
+    it('should NOT treat SUM/AVG/MAX as subqueries', () => {
+      expect(extractor.extract('SELECT SUM(quantity) FROM order_items WHERE product_id = 20').hasSubquery).toBe(0);
+      expect(extractor.extract('SELECT AVG(price) FROM products WHERE category_id = 8').hasSubquery).toBe(0);
+      expect(extractor.extract('SELECT MAX(created_at) FROM orders WHERE user_id = 5').hasSubquery).toBe(0);
     });
 
     it('should count subqueries based on parentheses minus 1', () => {
